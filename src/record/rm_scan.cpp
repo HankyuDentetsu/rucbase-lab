@@ -16,17 +16,46 @@ See the Mulan PSL v2 for more details. */
  * @param file_handle
  */
 RmScan::RmScan(const RmFileHandle *file_handle) : file_handle_(file_handle) {
-    // Todo:
-    // 初始化file_handle和rid（指向第一个存放了记录的位置）
-
+    // 初始化rid_为第一个非空记录位置，若不存在则置为末尾
+    rid_ = {RM_NO_PAGE, RM_NO_PAGE};
+    // 遍历记录页
+    for (int p = RM_FIRST_RECORD_PAGE; p < file_handle_->file_hdr_.num_pages; ++p) {
+        RmPageHandle ph = file_handle_->fetch_page_handle(p);
+        int slot = Bitmap::first_bit(true, ph.bitmap, file_handle_->file_hdr_.num_records_per_page);
+        file_handle_->buffer_pool_manager_->unpin_page(ph.page->get_page_id(), false);
+        if (slot < file_handle_->file_hdr_.num_records_per_page) {
+            rid_ = {p, slot};
+            break;
+        }
+    }
 }
 
 /**
  * @brief 找到文件中下一个存放了记录的位置
  */
 void RmScan::next() {
-    // Todo:
-    // 找到文件中下一个存放了记录的非空闲位置，用rid_来指向这个位置
+    // 找到下一个为1的位（同页优先，其次跨页）
+    assert(!is_end());
+    RmPageHandle ph = file_handle_->fetch_page_handle(rid_.page_no);
+    int next_slot = Bitmap::next_bit(true, ph.bitmap, file_handle_->file_hdr_.num_records_per_page, rid_.slot_no);
+    file_handle_->buffer_pool_manager_->unpin_page(ph.page->get_page_id(), false);
+    if (next_slot < file_handle_->file_hdr_.num_records_per_page) {
+        rid_.slot_no = next_slot;
+        return;
+    }
+    // 跨页查找
+    for (int p = rid_.page_no + 1; p < file_handle_->file_hdr_.num_pages; ++p) {
+        RmPageHandle nph = file_handle_->fetch_page_handle(p);
+        int slot = Bitmap::first_bit(true, nph.bitmap, file_handle_->file_hdr_.num_records_per_page);
+        file_handle_->buffer_pool_manager_->unpin_page(nph.page->get_page_id(), false);
+        if (slot < file_handle_->file_hdr_.num_records_per_page) {
+            rid_.page_no = p;
+            rid_.slot_no = slot;
+            return;
+        }
+    }
+    // 到末尾
+    rid_ = {RM_NO_PAGE, RM_NO_PAGE};
 
 }
 
@@ -34,7 +63,7 @@ void RmScan::next() {
  * @brief ​ 判断是否到达文件末尾
  */
 bool RmScan::is_end() const {
-    // Todo: 修改返回值
+    return rid_.page_no == RM_NO_PAGE;
 
     return false;
 }

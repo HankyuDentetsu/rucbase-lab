@@ -38,7 +38,38 @@ class UpdateExecutor : public AbstractExecutor {
         context_ = context;
     }
     std::unique_ptr<RmRecord> Next() override {
-        
+        // 对所有rids_对应的记录执行更新，同时维护索引
+        auto record_size = fh_->get_file_hdr().record_size;
+        for (const auto &rid : rids_) {
+            auto old_rec = fh_->get_record(rid, context_);
+            std::vector<char> new_buf(record_size);
+            memcpy(new_buf.data(), old_rec->data, record_size);
+            // 应用SET子句
+            for (auto &clause : set_clauses_) {
+                auto col_it = tab_.get_col(clause.lhs.col_name);
+                auto &col = *col_it;
+                Value v = clause.rhs;
+                if (!v.raw) v.init_raw(col.len);
+                memcpy(new_buf.data() + col.offset, v.raw->data, col.len);
+            }
+            // 维护索引：若键发生变化则删除旧键并插入新键
+            for (auto &index : tab_.indexes) {
+                auto ih = sm_manager_->ihs_.at(sm_manager_->get_ix_manager()->get_index_name(tab_name_, index.cols)).get();
+                std::vector<char> old_key(index.col_tot_len), new_key(index.col_tot_len);
+                int offset = 0;
+                for (size_t i = 0; i < index.col_num; ++i) {
+                    memcpy(old_key.data() + offset, old_rec->data + index.cols[i].offset, index.cols[i].len);
+                    memcpy(new_key.data() + offset, new_buf.data() + index.cols[i].offset, index.cols[i].len);
+                    offset += index.cols[i].len;
+                }
+                if (memcmp(old_key.data(), new_key.data(), index.col_tot_len) != 0) {
+                    ih->delete_entry(old_key.data(), context_->txn_);
+                    ih->insert_entry(new_key.data(), rid, context_->txn_);
+                }
+            }
+            // 更新记录文件
+            fh_->update_record(rid, new_buf.data(), context_);
+        }
         return nullptr;
     }
 
