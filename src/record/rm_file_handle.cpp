@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
  * @return {unique_ptr<RmRecord>} rid对应的记录对象指针
  */
 std::unique_ptr<RmRecord> RmFileHandle::get_record(const Rid& rid, Context* context) const {
+    // 加锁：IS锁表 + S锁记录
     if (context != nullptr && context->txn_ != nullptr && context->lock_mgr_ != nullptr) {
         context->lock_mgr_->lock_IS_on_table(context->txn_, fd_);
         context->lock_mgr_->lock_shared_on_record(context->txn_, rid, fd_);
@@ -42,6 +43,7 @@ std::unique_ptr<RmRecord> RmFileHandle::get_record(const Rid& rid, Context* cont
  * @return {Rid} 插入的记录的记录号（位置）
  */
 Rid RmFileHandle::insert_record(char* buf, Context* context) {
+    // 加锁：IX锁表 + X锁记录
     if (context != nullptr && context->txn_ != nullptr && context->lock_mgr_ != nullptr) {
         context->lock_mgr_->lock_IX_on_table(context->txn_, fd_);
     }
@@ -109,6 +111,7 @@ void RmFileHandle::insert_record(const Rid& rid, char* buf) {
  * @param {Context*} context
  */
 void RmFileHandle::delete_record(const Rid& rid, Context* context) {
+    // 加锁：IX锁表 + X锁记录
     if (context != nullptr && context->txn_ != nullptr && context->lock_mgr_ != nullptr) {
         context->lock_mgr_->lock_IX_on_table(context->txn_, fd_);
         context->lock_mgr_->lock_exclusive_on_record(context->txn_, rid, fd_);
@@ -144,6 +147,7 @@ void RmFileHandle::delete_record(const Rid& rid, Context* context) {
  * @param {Context*} context
  */
 void RmFileHandle::update_record(const Rid& rid, char* buf, Context* context) {
+    // 加锁：IX锁表 + X锁记录
     if (context != nullptr && context->txn_ != nullptr && context->lock_mgr_ != nullptr) {
         context->lock_mgr_->lock_IX_on_table(context->txn_, fd_);
         context->lock_mgr_->lock_exclusive_on_record(context->txn_, rid, fd_);

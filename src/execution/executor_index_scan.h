@@ -64,16 +64,114 @@ class IndexScanExecutor : public AbstractExecutor {
         fed_conds_ = conds_;
     }
 
+    size_t tupleLen() const override { return len_; }
+
+    const std::vector<ColMeta> &cols() const override { return cols_; }
+
+    bool is_end() const override { return scan_ == nullptr ? true : scan_->is_end(); }
+
     void beginTuple() override {
-        
+        // 加锁：S锁表
+        if (context_ != nullptr && context_->txn_ != nullptr && context_->lock_mgr_ != nullptr) {
+            context_->lock_mgr_->lock_shared_on_table(context_->txn_, fh_->GetFd());
+        }
+
+        auto ix_name = sm_manager_->get_ix_manager()->get_index_name(tab_name_, index_meta_.cols);
+        auto ih = sm_manager_->ihs_.at(ix_name).get();
+        scan_ = std::make_unique<IxScan>(ih, ih->leaf_begin(), ih->leaf_end(), sm_manager_->get_bpm());
+
+        auto matches = [&](const Rid &r) -> bool {
+            auto rec = fh_->get_record(r, context_);
+            for (const auto &cond : fed_conds_) {
+                if (cond.lhs_col.tab_name != tab_name_) continue;
+                const auto &lhs_meta = *get_col(cols_, cond.lhs_col);
+                const char *lhs = rec->data + lhs_meta.offset;
+                const char *rhs = nullptr;
+                ColType type = lhs_meta.type;
+                int len = lhs_meta.len;
+                if (cond.is_rhs_val) {
+                    Value v = cond.rhs_val;
+                    if (!v.raw) v.init_raw(len);
+                    rhs = v.raw->data;
+                } else {
+                    if (cond.rhs_col.tab_name != tab_name_) continue;
+                    const auto &rhs_meta = *get_col(cols_, cond.rhs_col);
+                    rhs = rec->data + rhs_meta.offset;
+                }
+                int cmp = ix_compare(lhs, rhs, type, len);
+                bool ok = false;
+                switch (cond.op) {
+                    case OP_EQ: ok = (cmp == 0); break;
+                    case OP_NE: ok = (cmp != 0); break;
+                    case OP_LT: ok = (cmp < 0); break;
+                    case OP_GT: ok = (cmp > 0); break;
+                    case OP_LE: ok = (cmp <= 0); break;
+                    case OP_GE: ok = (cmp >= 0); break;
+                    default: ok = false; break;
+                }
+                if (!ok) return false;
+            }
+            return true;
+        };
+
+        for (; !scan_->is_end(); scan_->next()) {
+            Rid r = scan_->rid();
+            if (matches(r)) {
+                rid_ = r;
+                break;
+            }
+        }
     }
 
     void nextTuple() override {
-        
+        if (scan_ == nullptr || scan_->is_end()) return;
+
+        auto matches = [&](const Rid &r) -> bool {
+            auto rec = fh_->get_record(r, context_);
+            for (const auto &cond : fed_conds_) {
+                if (cond.lhs_col.tab_name != tab_name_) continue;
+                const auto &lhs_meta = *get_col(cols_, cond.lhs_col);
+                const char *lhs = rec->data + lhs_meta.offset;
+                const char *rhs = nullptr;
+                ColType type = lhs_meta.type;
+                int len = lhs_meta.len;
+                if (cond.is_rhs_val) {
+                    Value v = cond.rhs_val;
+                    if (!v.raw) v.init_raw(len);
+                    rhs = v.raw->data;
+                } else {
+                    if (cond.rhs_col.tab_name != tab_name_) continue;
+                    const auto &rhs_meta = *get_col(cols_, cond.rhs_col);
+                    rhs = rec->data + rhs_meta.offset;
+                }
+                int cmp = ix_compare(lhs, rhs, type, len);
+                bool ok = false;
+                switch (cond.op) {
+                    case OP_EQ: ok = (cmp == 0); break;
+                    case OP_NE: ok = (cmp != 0); break;
+                    case OP_LT: ok = (cmp < 0); break;
+                    case OP_GT: ok = (cmp > 0); break;
+                    case OP_LE: ok = (cmp <= 0); break;
+                    case OP_GE: ok = (cmp >= 0); break;
+                    default: ok = false; break;
+                }
+                if (!ok) return false;
+            }
+            return true;
+        };
+
+        for (scan_->next(); !scan_->is_end(); scan_->next()) {
+            Rid r = scan_->rid();
+            if (matches(r)) {
+                rid_ = r;
+                break;
+            }
+        }
     }
 
     std::unique_ptr<RmRecord> Next() override {
-        return nullptr;
+        if (scan_ == nullptr || scan_->is_end()) return nullptr;
+        return fh_->get_record(rid_, context_);
     }
 
     Rid &rid() override { return rid_; }

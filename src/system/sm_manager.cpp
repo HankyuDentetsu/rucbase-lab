@@ -224,6 +224,7 @@ void SmManager::create_table(const std::string& tab_name, const std::vector<ColD
     int record_size = curr_offset;  // record_size就是col meta所占的大小（表的元数据也是以记录的形式进行存储的）
     rm_manager_->create_file(tab_name, record_size);
     fhs_.emplace(tab_name, rm_manager_->open_file(tab_name));
+    // 加锁：X锁表
     if (context != nullptr && context->txn_ != nullptr && context->lock_mgr_ != nullptr) {
         context->lock_mgr_->lock_exclusive_on_table(context->txn_, fhs_.at(tab_name)->GetFd());
     }
@@ -242,6 +243,7 @@ void SmManager::drop_table(const std::string& tab_name, Context* context) {
     if (!db_.is_table(tab_name)) {
         throw TableNotFoundError(tab_name);
     }
+    // 加锁：X锁表
     if (context != nullptr && context->txn_ != nullptr && context->lock_mgr_ != nullptr) {
         context->lock_mgr_->lock_exclusive_on_table(context->txn_, fhs_.at(tab_name)->GetFd());
     }
@@ -285,6 +287,7 @@ void SmManager::create_index(const std::string& tab_name, const std::vector<std:
     if (!db_.is_table(tab_name)) {
         throw TableNotFoundError(tab_name);
     }
+    // 加锁：S锁表
     if (context != nullptr && context->txn_ != nullptr && context->lock_mgr_ != nullptr) {
         context->lock_mgr_->lock_shared_on_table(context->txn_, fhs_.at(tab_name)->GetFd());
     }
@@ -327,6 +330,7 @@ void SmManager::drop_index(const std::string& tab_name, const std::vector<std::s
     if (!db_.is_table(tab_name)) {
         throw TableNotFoundError(tab_name);
     }
+    // 加锁：S锁表
     if (context != nullptr && context->txn_ != nullptr && context->lock_mgr_ != nullptr) {
         context->lock_mgr_->lock_shared_on_table(context->txn_, fhs_.at(tab_name)->GetFd());
     }
