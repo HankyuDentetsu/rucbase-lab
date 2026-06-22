@@ -42,7 +42,7 @@ class DeleteExecutor : public AbstractExecutor {
             auto rec = fh_->get_record(rid, context_);
             // 索引维护：从所有索引删除对应键
             for (auto &index : tab_.indexes) {
-                auto ih = sm_manager_->ihs_.at(sm_manager_->get_ix_manager()->get_index_name(tab_name_, index.cols)).get();
+                auto ih = sm_manager_->get_ix_handle(tab_name_, index.cols);
                 std::vector<char> key(index.col_tot_len);
                 int offset = 0;
                 for (size_t i = 0; i < index.col_num; ++i) {

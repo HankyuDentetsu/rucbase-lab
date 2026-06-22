@@ -52,6 +52,8 @@ class SmManager {
 
     IxManager* get_ix_manager() { return ix_manager_; }  
 
+    IxIndexHandle* get_ix_handle(const std::string& tab_name, const std::vector<ColMeta>& index_cols);
+    
     bool is_dir(const std::string& db_name);
 
     void create_db(const std::string& db_name);

@@ -13,6 +13,7 @@ See the Mulan PSL v2 for more details. */
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <cstring>
 #include <fstream>
 
 #include "index/ix.h"
@@ -125,6 +126,16 @@ void SmManager::flush_meta() {
     // 默认清空文件
     std::ofstream ofs(DB_META_NAME);
     ofs << db_;
+}
+
+IxIndexHandle* SmManager::get_ix_handle(const std::string& tab_name, const std::vector<ColMeta>& index_cols) {
+    auto ix_name = ix_manager_->get_index_name(tab_name, index_cols);
+    auto it = ihs_.find(ix_name);
+    if (it == ihs_.end()) {
+        auto ih = ix_manager_->open_index(tab_name, index_cols);
+        it = ihs_.emplace(ix_name, std::move(ih)).first;
+    }
+    return it->second.get();
 }
 
 /**
@@ -311,8 +322,19 @@ void SmManager::create_index(const std::string& tab_name, const std::vector<std:
     // 创建索引文件
     ix_manager_->create_index(tab_name, index_meta.cols);
     auto ih = ix_manager_->open_index(tab_name, index_meta.cols);
-    auto ix_name = ix_manager_->get_index_name(tab_name, index_meta.cols);
-    ihs_[ix_name] = std::move(ih);
+    auto fh = fhs_.at(tab_name).get();
+    for (RmScan scan(fh); !scan.is_end(); scan.next()) {
+        auto rid = scan.rid();
+        auto rec = fh->get_record(rid, nullptr);
+        std::vector<char> key(index_meta.col_tot_len);
+        int offset = 0;
+        for (auto &col : index_meta.cols) {
+            memcpy(key.data() + offset, rec->data + col.offset, col.len);
+            offset += col.len;
+        }
+        ih->insert_entry(key.data(), rid, nullptr);
+    }
+    ix_manager_->close_index(ih.get());
     // 更新表的索引元数据
     tab.indexes.push_back(index_meta);
     // 刷新数据库元数据

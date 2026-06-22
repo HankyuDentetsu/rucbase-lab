@@ -76,8 +76,7 @@ class IndexScanExecutor : public AbstractExecutor {
             context_->lock_mgr_->lock_shared_on_table(context_->txn_, fh_->GetFd());
         }
 
-        auto ix_name = sm_manager_->get_ix_manager()->get_index_name(tab_name_, index_meta_.cols);
-        auto ih = sm_manager_->ihs_.at(ix_name).get();
+        auto ih = sm_manager_->get_ix_handle(tab_name_, index_meta_.cols);
         scan_ = std::make_unique<IxScan>(ih, ih->leaf_begin(), ih->leaf_end(), sm_manager_->get_bpm());
 
         auto matches = [&](const Rid &r) -> bool {

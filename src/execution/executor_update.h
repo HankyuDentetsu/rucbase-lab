@@ -54,7 +54,7 @@ class UpdateExecutor : public AbstractExecutor {
             }
             // 维护索引：若键发生变化则删除旧键并插入新键
             for (auto &index : tab_.indexes) {
-                auto ih = sm_manager_->ihs_.at(sm_manager_->get_ix_manager()->get_index_name(tab_name_, index.cols)).get();
+                auto ih = sm_manager_->get_ix_handle(tab_name_, index.cols);
                 std::vector<char> old_key(index.col_tot_len), new_key(index.col_tot_len);
                 int offset = 0;
                 for (size_t i = 0; i < index.col_num; ++i) {

@@ -30,8 +30,7 @@ void append_index_key(std::vector<char> &key, const IndexMeta &index, const char
 void delete_indexes_for_record(SmManager *sm_manager, const std::string &tab_name, const RmRecord &record) {
     auto &tab = sm_manager->db_.get_table(tab_name);
     for (auto &index : tab.indexes) {
-        auto ix_name = sm_manager->get_ix_manager()->get_index_name(tab_name, index.cols);
-        auto ih = sm_manager->ihs_.at(ix_name).get();
+        auto ih = sm_manager->get_ix_handle(tab_name, index.cols);
         std::vector<char> key(index.col_tot_len);
         append_index_key(key, index, record.data);
         ih->delete_entry(key.data(), nullptr);
@@ -41,8 +40,7 @@ void delete_indexes_for_record(SmManager *sm_manager, const std::string &tab_nam
 void insert_indexes_for_record(SmManager *sm_manager, const std::string &tab_name, const RmRecord &record, const Rid &rid) {
     auto &tab = sm_manager->db_.get_table(tab_name);
     for (auto &index : tab.indexes) {
-        auto ix_name = sm_manager->get_ix_manager()->get_index_name(tab_name, index.cols);
-        auto ih = sm_manager->ihs_.at(ix_name).get();
+        auto ih = sm_manager->get_ix_handle(tab_name, index.cols);
         std::vector<char> key(index.col_tot_len);
         append_index_key(key, index, record.data);
         ih->insert_entry(key.data(), rid, nullptr);
